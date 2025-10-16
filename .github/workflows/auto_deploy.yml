@@ -45,10 +45,12 @@ jobs:
             const initDeadline = Date.now() + 2*60*1000;
             const hardDeadline = Date.now() + 45*60*1000;
             const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
             async function allStatuses() {
               const { data } = await github.rest.repos.getCombinedStatusForRef({ owner, repo, ref });
               return data.statuses || [];
             }
+
             let expected = null;
             while (Date.now() < initDeadline) {
               const statuses = await allStatuses();
@@ -59,16 +61,25 @@ jobs:
                 const n = parseInt(a.description || "0", 10);
                 if (!Number.isNaN(n) && n > 0) { expected = n; break; }
               }
-              if (expected) break;
+              if (expected) { core.info(`${expected} deploy${expected===1?'':'s'} are in progress`); break; }
               await sleep(5000);
             }
             if (!expected) { core.setFailed("Auto-deploy did not publish expected deployment count."); return; }
+
+            let prevCompleted = -1, prevSuccess = -1, prevFailed = -1;
             while (Date.now() < hardDeadline) {
               const statuses = await allStatuses();
               const perProject = statuses.filter(s => s.context.startsWith(prefix + "/"));
               const success = perProject.filter(s => s.state === "success").length;
               const failed  = perProject.filter(s => s.state === "failure" || s.state === "error").length;
-              if (success + failed >= expected) { if (failed > 0) core.setFailed(`Deploy failures: ${failed}/${expected}`); return; }
+              const completed = success + failed;
+
+              if (completed !== prevCompleted || success !== prevSuccess || failed !== prevFailed) {
+                core.info(`completed=${completed}/${expected} success=${success} failed=${failed}`);
+                prevCompleted = completed; prevSuccess = success; prevFailed = failed;
+              }
+
+              if (completed >= expected) { if (failed > 0) core.setFailed(`Deploy failures: ${failed}/${expected}`); return; }
               await sleep(10000);
             }
             core.setFailed("Timed out waiting for auto-deploy results.");
