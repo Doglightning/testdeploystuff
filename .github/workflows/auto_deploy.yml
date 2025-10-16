@@ -51,6 +51,9 @@ jobs:
               return data.statuses || [];
             }
 
+            // Track last reported terminal state per project to avoid duplicate logs
+            const lastReportedBySlug = {};
+
             let expected = null;
             while (Date.now() < initDeadline) {
               const statuses = await allStatuses();
@@ -69,14 +72,42 @@ jobs:
             let prevCompleted = -1, prevSuccess = -1, prevFailed = -1;
             while (Date.now() < hardDeadline) {
               const statuses = await allStatuses();
-              const perProject = statuses.filter(s => s.context.startsWith(prefix + "/"));
-              const success = perProject.filter(s => s.state === "success").length;
-              const failed  = perProject.filter(s => s.state === "failure" || s.state === "error").length;
+              const perProject = statuses.filter(s => s.context && s.context.startsWith(prefix + "/"));
+
+              // Build latest status per project slug (use updated_at/created_at to pick most recent)
+              const latestBySlug = {};
+              for (const s of perProject) {
+                const slug = s.context.slice(prefix.length + 1);
+                const time = new Date(s.updated_at || s.created_at || 0).getTime();
+                const prev = latestBySlug[slug];
+                if (!prev || time > prev._time) {
+                  latestBySlug[slug] = { ...s, _time: time, _slug: slug };
+                }
+              }
+
+              const latestList = Object.values(latestBySlug);
+              const success = latestList.filter(s => s.state === "success").length;
+              const failed  = latestList.filter(s => s.state === "failure" || s.state === "error").length;
               const completed = success + failed;
 
               if (completed !== prevCompleted || success !== prevSuccess || failed !== prevFailed) {
                 core.info(`completed=${completed}/${expected} success=${success} failed=${failed}`);
                 prevCompleted = completed; prevSuccess = success; prevFailed = failed;
+              }
+
+              // Emit per-project updates when terminal state changes
+              for (const s of latestList) {
+                const slug = s._slug;
+                const state = s.state;
+                const prev = lastReportedBySlug[slug];
+                if ((state === "failure" || state === "error") && prev !== state) {
+                  const reason = s.description || "No details provided.";
+                  core.info(`Project ${slug} failed: ${reason}`);
+                  lastReportedBySlug[slug] = state;
+                } else if (state === "success" && prev !== state) {
+                  core.info(`✅Project ${slug} passed!`);
+                  lastReportedBySlug[slug] = state;
+                }
               }
 
               if (completed >= expected) { if (failed > 0) core.setFailed(`Deploy failures: ${failed}/${expected}`); return; }
