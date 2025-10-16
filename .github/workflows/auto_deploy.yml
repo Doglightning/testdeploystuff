@@ -103,11 +103,11 @@ jobs:
                 if ((state === "failure" || state === "error") && prev !== state) {
                   const reason = s.description || "No details provided.";
                   core.info(`❌Project ${slug} failed: ${reason}`);
-                  core.info("");
+                  core.info(" ");
                   lastReportedBySlug[slug] = state;
                 } else if (state === "success" && prev !== state) {
                   core.info(`✅Project ${slug} passed!`);
-                  core.info("");
+                  core.info(" ");
                   lastReportedBySlug[slug] = state;
                 }
               }
