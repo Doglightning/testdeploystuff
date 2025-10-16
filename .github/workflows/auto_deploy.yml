@@ -28,8 +28,8 @@ jobs:
               repo: context.repo.repo,
               event_type: "auto-deploy",
               client_payload: {
-                base: '${{ inputs.base }}',
-                head: '${{ inputs.head }}'
+                base: ${{ toJson(inputs.base) }},
+                head: ${{ toJson(inputs.head) }}
               }
             })
 
@@ -40,7 +40,7 @@ jobs:
           script: |
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const ref = '${{ inputs.head }}';
+            const ref = ${{ toJson(inputs.head) }};
             const prefix = "world-forge/auto-deploy";
             const initDeadline = Date.now() + 2*60*1000;
             const hardDeadline = Date.now() + 45*60*1000;
